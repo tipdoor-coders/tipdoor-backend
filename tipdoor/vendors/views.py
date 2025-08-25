@@ -1,3 +1,9 @@
-from django.shortcuts import render
+from rest_framework import generics, status
+from rest_framework.permissions import AllowAny
+from .models import Vendor
+from .serializers import VendorSerializer
 
-# Create your views here.
+class VendorRegisterView(generics.CreateAPIView):
+    queryset = Vendor.objects.all()
+    serializer_class = VendorSerializer
+    permission_classes = [AllowAny]  # Allow unauthenticated users to register
