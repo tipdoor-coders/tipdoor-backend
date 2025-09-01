@@ -3,7 +3,7 @@ from django.conf import settings
 from .models import Product, Cart, CartItem, OrderItem, Order
 
 class ProductSerializer(serializers.ModelSerializer):
-    image = serializers.SerializerMethodField()
+    status = serializers.CharField(read_only=True)  # Derived from stock
 
     def get_image(self, obj):
         if obj.image:
@@ -13,7 +13,8 @@ class ProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'image']
+        fields = ['id', 'name', 'sku', 'price', 'stock', 'status', 'image', 'is_published', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'status', 'created_at', 'updated_at']
 
 class CartItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)

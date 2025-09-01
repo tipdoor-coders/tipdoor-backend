@@ -1,28 +1,23 @@
 from django.shortcuts import render
 from django.http import HttpResponse
-from rest_framework import generics
-from .models import Cart, CartItem, Product, Order, OrderItem
+from rest_framework import generics, status, views
+from .models import Cart, CartItem, Product, Order, OrderItem, Vendor
 from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.serializers import Serializer, CharField
 from django.db.models import Q
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
+from .permissions import IsVendor, CanViewProducts
 
 
-class ProductListCreateView(generics.ListCreateAPIView):
-    queryset = Product.objects.all()
+class CustomerProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
-
-    permission_classes = [IsAuthenticated]
-
-    def get_serializer_context(self):
-
-        return {'request': self.request}
+    permission_classes = [CanViewProducts]
+    queryset = Product.objects.filter(is_published=True)
 
 class LatestArrivalView(generics.ListAPIView):
     queryset = Product.objects.order_by('-created_at')[:5]  # Newest 5 products
@@ -143,15 +138,6 @@ class RegisterView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-class ProductDetailView(APIView):
-    def get(self, request, pk):
-        try:
-            product = Product.objects.get(pk=pk)
-            serializer = ProductSerializer(product, context={'request': request})
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Product.DoesNotExist:
-            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
-
 class OrderCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -211,6 +197,54 @@ class OrderListView(APIView):
         serializer = OrderSerializer(orders, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+class ProductPublishView(views.APIView):
+    permission_classes = [IsAuthenticated, IsVendor]
+
+    def post(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk)
+            if not IsVendor().has_object_permission(request, self, product):
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+            product.is_published = True
+            product.save()
+            return Response({'message': 'Product published'}, status=status.HTTP_200_OK)
+        except Product.DoesNotExist:
+            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class ProductUnpublishView(views.APIView):
+    permission_classes = [IsAuthenticated, IsVendor]
+
+    def post(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk)
+            if not IsVendor().has_object_permission(request, self, product):
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+            product.is_published = False
+            product.save()
+            return Response({'message': 'Product unpublished'}, status=status.HTTP_200_OK)
+        except Product.DoesNotExist:
+            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [CanViewProducts | (IsAuthenticated & IsVendor)]
+
+    def get_queryset(self):
+        # Vendors see only their products; customers see published products
+        if self.request.user.is_authenticated and hasattr(self.request.user, 'vendor') and self.request.user.vendor.is_active:
+            return Product.objects.filter(vendor__user=self.request.user)
+        return Product.objects.filter(is_published=True)
+
+class VendorProductListCreateView(generics.ListCreateAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticated, IsVendor]
+
+    def get_queryset(self):
+        return Product.objects.filter(vendor__user=self.request.user)
+
+    def perform_create(self, serializer):
+        vendor = Vendor.objects.get(user=self.request.user)
+        serializer.save(vendor=vendor)
+
 def index(request):
     return HttpResponse("Hello, world. You're at shop.")
-
