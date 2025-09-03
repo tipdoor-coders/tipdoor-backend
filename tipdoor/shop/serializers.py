@@ -13,8 +13,8 @@ class ProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'sku', 'price', 'stock', 'status', 'image', 'is_published', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'sku', 'price', 'stock', 'status', 'image', 'is_published', 'created_at', 'updated_at', 'vendor']
+        read_only_fields = ['id', 'status', 'created_at', 'updated_at','vendor']
 
 class CartItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
@@ -34,11 +34,16 @@ class CartSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'created_at', 'items']
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer()
+    order_id = serializers.IntegerField(source='order.id', read_only=True)
+    order_date = serializers.DateTimeField(source='order.created_at', read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    customer_name = serializers.CharField(source='order.user.get_full_name', read_only=True)
+    order_status = serializers.CharField(source='order.status', read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'quantity', 'price']
+        fields = ['id', 'order_id', 'order_date', 'product_name', 'product_sku', 'quantity', 'price', 'customer_name', 'order_status']
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)

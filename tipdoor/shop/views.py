@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from rest_framework import generics, status, views
 from .models import Cart, CartItem, Product, Order, OrderItem, Vendor
-from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer
+from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -245,6 +245,34 @@ class VendorProductListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         vendor = Vendor.objects.get(user=self.request.user)
         serializer.save(vendor=vendor)
+
+class VendorOrderItemListView(generics.ListAPIView):
+    serializer_class = OrderItemSerializer
+    permission_classes = [IsAuthenticated, IsVendor]
+
+    def get_queryset(self):
+        return OrderItem.objects.filter(product__vendor__user=self.request.user).select_related('order', 'product')
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+class VendorOrderCancelView(views.APIView):
+    permission_classes = [IsAuthenticated, IsVendor]
+
+    def post(self, request, order_id):
+        try:
+            # Check if the order has items belonging to the vendor
+            order = Order.objects.get(pk=order_id)
+            vendor = Vendor.objects.get(user=request.user)
+            if not OrderItem.objects.filter(order=order, product__vendor=vendor).exists():
+                return Response({'error': 'No items in this order belong to you'}, status=status.HTTP_403_FORBIDDEN)
+            if order.status != 'Pending':
+                return Response({'error': 'Only pending orders can be cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+            order.status = 'cancelled'
+            order.save()
+            return Response({'message': 'Order cancelled'}, status=status.HTTP_200_OK)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
 
 def index(request):
     return HttpResponse("Hello, world. You're at shop.")
