@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import Product, Promotion
+from . import models
 
-admin.site.register(Product)
-admin.site.register(Promotion)
+admin.site.register(models.Product)
+admin.site.register(models.Promotion)
+admin.site.register(models.Order)
