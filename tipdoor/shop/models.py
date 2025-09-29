@@ -41,6 +41,13 @@ class CartItem(models.Model):
         return f"{self.quantity} x {self.product.name} in cart"
 
 class Order(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('ASSIGNED', 'Assigned'),
+        ('DELIVERED', 'Delivered'),
+        ('CANCELLED', 'Cancelled'),
+    ]
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     address = models.CharField(max_length=200)
@@ -48,7 +55,7 @@ class Order(models.Model):
     postal_code = models.CharField(max_length=20)
     country = models.CharField(max_length=100)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=20, default='Pending')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     promo_code = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
