@@ -1,7 +1,9 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from rest_framework import generics, status, views
-from .models import Cart, CartItem, Product, Order, OrderItem, Vendor, Promotion
+from .models import Cart, CartItem, Product, Order, OrderItem, Promotion
+from vendors.models import Vendor
+from delivery.models import DeliveryPartner
 from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -319,9 +321,20 @@ class VendorOrderStatusUpdateView(views.APIView):
             valid_statuses = [choice[0] for choice in Order._meta.get_field('status').choices]
             if new_status not in valid_statuses:
                 return Response({'error': f'Invalid status. Choices: {valid_statuses}'}, status=status.HTTP_400_BAD_REQUEST)
-            # Optionally, add business logic for allowed transitions here
+            
+            # Update order status
             order.status = new_status
             order.save()
+
+            # Notify delivery partners if status is APPROVED
+            if new_status == 'APPROVED':
+                active_partners = DeliveryPartner.objects.filter(
+                    is_available=True,
+                    service_area__contains=order.address  # Simplified; use GIS for precise matching
+                )
+                for partner in active_partners:
+                    send_notification(partner, order)
+
             return Response({'message': f'Order status updated to {new_status}'}, status=status.HTTP_200_OK)
         except Order.DoesNotExist:
             return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -352,3 +365,6 @@ class VendorPromotionDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 def index(request):
     return HttpResponse("Hello, world. You're at shop.")
+
+def send_notification(partner, order):
+    print("Send notification function")
