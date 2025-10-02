@@ -4,3 +4,4 @@ djangorestframework
 djangorestframework_simplejwt
 pillow
 psycopg-binary
+drf-spectacular
