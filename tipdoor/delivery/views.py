@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -7,6 +8,7 @@ from .models import DeliveryPartner, DeliveryAssignment
 from .serializers import DeliveryPartnerSerializer, DeliveryAssignmentSerializer
 from .permissions import IsAssignedDeliveryPartner
 
+@extend_schema(tags=["Delivery"])
 class DeliveryPartnerViewSet(viewsets.ModelViewSet):
     queryset = DeliveryPartner.objects.all()
     serializer_class = DeliveryPartnerSerializer
@@ -18,6 +20,7 @@ class DeliveryPartnerViewSet(viewsets.ModelViewSet):
             return DeliveryPartner.objects.filter(user=self.request.user)
         return DeliveryPartner.objects.all()
 
+@extend_schema(tags=["Delivery"])
 class DeliveryAssignmentViewSet(viewsets.ModelViewSet):
     queryset = DeliveryAssignment.objects.all()
     serializer_class = DeliveryAssignmentSerializer
