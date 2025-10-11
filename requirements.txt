@@ -3,5 +3,10 @@ django-cors-headers
 djangorestframework
 djangorestframework_simplejwt
 pillow
-psycopg-binary
+psycopg[binary]
 drf-spectacular
+dj-database-url
+python-dotenv
+whitenoise[brotli]
+gunicorn
+uvicorn

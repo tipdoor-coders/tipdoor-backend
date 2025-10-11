@@ -2,6 +2,7 @@ venv/
 notes.txt
 __pycache__/
 .vscode/
-config.py
 tipdoor/products/
 tipdoor/promotions/
+.env
+staticfiles/
