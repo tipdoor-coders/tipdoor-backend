@@ -20,3 +20,7 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: 4
+      - key: DEBUG
+        value: False
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://tipdoor-customer.vercel.app,https://tipdoor-vendor.vercel.app/
