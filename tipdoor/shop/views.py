@@ -25,7 +25,6 @@ class CustomerProductListView(generics.ListAPIView):
 class LatestArrivalView(generics.ListAPIView):
     queryset = Product.objects.order_by('-created_at')[:5]  # Newest 5 products
     serializer_class = ProductSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_serializer_context(self):
         return {'request': self.request}
