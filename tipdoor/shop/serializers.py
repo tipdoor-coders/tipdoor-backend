@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from django.conf import settings
-from .models import Product, Cart, CartItem, OrderItem, Order, Promotion, Vendor
+from django.contrib.auth.models import User
 from django.utils import timezone
+from .models import Product, Cart, CartItem, OrderItem, Order, Promotion, Vendor, Customer
 
 class ProductSerializer(serializers.ModelSerializer):
     status = serializers.CharField(read_only=True)  # Derived from stock
@@ -53,6 +54,26 @@ class ProductSerializer(serializers.ModelSerializer):
                 return max(0, price - float(promotion.discount_value))
         return None
 
+class CustomerRegistrationSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+
+    class Meta:
+        model = Customer
+        fields = ['username', 'password', 'name', 'email']
+    
+    def create(self, validated_data):
+        username = validated_data.pop('username')
+        password = validated_data.pop('password')
+
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            email=validated_data['email']
+        )
+
+        customer = Customer.objects.create(user=user, **validated_data)
+        return customer
 
 class CartItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)

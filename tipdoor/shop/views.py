@@ -4,10 +4,10 @@ from rest_framework import generics, status, views
 from .models import Cart, CartItem, Product, Order, OrderItem, Promotion
 from vendors.models import Vendor
 from delivery.models import DeliveryPartner
-from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer
+from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer, CustomerRegistrationSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.serializers import Serializer, CharField
 from django.db.models import Q
 from django.contrib.auth.models import User
@@ -114,32 +114,9 @@ class ProductSearchView(APIView):
         serializer = ProductSerializer(products, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-class RegisterView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        email = request.data.get('email')
-        password = request.data.get('password')
-        
-        if not all([username, email, password]):
-            return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if User.objects.filter(username=username).exists():
-            return Response({'error': 'Username already taken'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if User.objects.filter(email=email).exists():
-            return Response({'error': 'Email already registered'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            user = User.objects.create_user(username=username, email=email, password=password)
-            user.save()
-            refresh = RefreshToken.for_user(user)
-            return Response({
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-                'message': 'User created successfully'
-            }, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+class CustomerRegisterView(generics.CreateAPIView):
+    serializer_class = CustomerRegistrationSerializer
+    permission_classes = [AllowAny]
 
 class OrderCreateView(APIView):
     permission_classes = [IsAuthenticated]
