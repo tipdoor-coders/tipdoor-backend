@@ -4,7 +4,7 @@ from rest_framework import generics, status, views
 from .models import Cart, CartItem, Product, Order, OrderItem, Promotion
 from vendors.models import Vendor
 from delivery.models import DeliveryPartner
-from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer, CustomerRegistrationSerializer, CustomerSerializer
+from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer, CustomerRegistrationSerializer, CustomerSerializer, OrderStatusUpdateSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -274,41 +274,58 @@ class VendorOrderItemListView(generics.ListAPIView):
     def get_serializer_context(self):
         return {'request': self.request}
 
-class VendorOrderStatusUpdateView(views.APIView):
+class VendorOrderStatusUpdateView(generics.GenericAPIView):
+    """
+    Allows a vendor to update the status of an order that contains their products.
+    If the order is approved, available delivery partners are notified.
+    """
+
     permission_classes = [IsAuthenticated, IsVendor]
+    serializer_class = OrderStatusUpdateSerializer
 
     def post(self, request, order_id):
-        new_status = request.data.get('status')
-        if not new_status:
-            return Response({'error': 'Status is required'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_status = serializer.validated_data["status"]
 
         try:
             order = Order.objects.get(pk=order_id)
-            vendor = Vendor.objects.get(user=request.user)
-            # Ensure the vendor has items in this order
-            if not OrderItem.objects.filter(order=order, product__vendor=vendor).exists():
-                return Response({'error': 'No items in this order belong to you'}, status=status.HTTP_403_FORBIDDEN)
-            # Check if the status is valid
-            valid_statuses = [choice[0] for choice in Order._meta.get_field('status').choices]
-            if new_status not in valid_statuses:
-                return Response({'error': f'Invalid status. Choices: {valid_statuses}'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update order status
-            order.status = new_status
-            order.save()
-
-            # Notify delivery partners if status is APPROVED
-            if new_status == 'APPROVED':
-                active_partners = DeliveryPartner.objects.filter(
-                    is_available=True,
-                    service_area__contains=order.address  # Simplified; use GIS for precise matching
-                )
-                for partner in active_partners:
-                    send_notification(partner, order)
-
-            return Response({'message': f'Order status updated to {new_status}'}, status=status.HTTP_200_OK)
         except Order.DoesNotExist:
-            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            vendor = Vendor.objects.get(user=request.user)
+        except Vendor.DoesNotExist:
+            return Response(
+                {"error": "Vendor profile not found"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        has_items = OrderItem.objects.filter(order=order, product__vendor=vendor).exists()
+        if not has_items:
+            return Response(
+                {"error": "You do not have any items in this order"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        order.status = new_status
+        order.save(update_fields=["status"])
+
+        if new_status == "APPROVED":
+            active_partners = DeliveryPartner.objects.filter(
+                is_available=True,
+                service_area__contains=order.address
+            )
+            for partner in active_partners:
+                send_notification(partner, order)
+
+        return Response(
+            {"message": f"Order status updated to {new_status}"},
+            status=status.HTTP_200_OK
+        )
 
 class VendorPromotionListCreateView(generics.ListCreateAPIView):
     serializer_class = PromotionSerializer

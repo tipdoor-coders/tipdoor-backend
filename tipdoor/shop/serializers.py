@@ -198,6 +198,9 @@ class OrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Promo code does not apply to any items in the cart.")
         return value
 
+class OrderStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=Order._meta.get_field('status').choices)
+
 class PromotionSerializer(serializers.ModelSerializer):
     applicable_products = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(),
