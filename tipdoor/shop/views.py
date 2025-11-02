@@ -30,11 +30,10 @@ class LatestArrivalView(generics.ListAPIView):
         return {'request': self.request}
 
 class CartView(APIView):
-
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        cart, created = Cart.objects.get_or_create(user=request.user)
+        cart, created = Cart.objects.get_or_create(customer=request.user.customer)
         serializer = CartSerializer(cart, context={'request': request})
         return Response(serializer.data)
 

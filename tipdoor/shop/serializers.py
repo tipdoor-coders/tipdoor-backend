@@ -90,7 +90,7 @@ class CartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cart
-        fields = ['id', 'user', 'created_at', 'items']
+        fields = ['id', 'customer', 'created_at', 'items']
 
 class OrderItemSerializer(serializers.ModelSerializer):
     order_id = serializers.IntegerField(source='order.id', read_only=True)
