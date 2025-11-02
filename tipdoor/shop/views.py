@@ -4,7 +4,7 @@ from rest_framework import generics, status, views
 from .models import Cart, CartItem, Product, Order, OrderItem, Promotion
 from vendors.models import Vendor
 from delivery.models import DeliveryPartner
-from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer, CustomerRegistrationSerializer
+from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer, CustomerRegistrationSerializer, CustomerSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -45,7 +45,7 @@ class AddToCartView(APIView):
         quantity = request.data.get('quantity', 1)
         try:
             product = Product.objects.get(id=product_id)
-            cart, created = Cart.objects.get_or_create(user=request.user)
+            cart, created = Cart.objects.get_or_create(customer=request.user.customer)
             cart_item, item_created = CartItem.objects.get_or_create(
                 cart=cart, product=product, defaults={'quantity': quantity}
             )
@@ -63,7 +63,7 @@ class UpdateCartItemView(APIView):
 
     def patch(self, request, item_id):
         try:
-            cart_item = CartItem.objects.get(id=item_id, cart__user=request.user)
+            cart_item = CartItem.objects.get(id=item_id, cart__customer=request.user.customer)
             quantity = request.data.get('quantity')
             if quantity is None or int(quantity) < 1:
                 return Response({"error": "Quantity must be at least 1"}, status=status.HTTP_400_BAD_REQUEST)
@@ -80,7 +80,7 @@ class RemoveCartItemView(APIView):
 
     def delete(self, request, item_id):
         try:
-            cart_item = CartItem.objects.get(id=item_id, cart__user=request.user)
+            cart_item = CartItem.objects.get(id=item_id, cart__customer=request.user.customer)
             cart = cart_item.cart
             cart_item.delete()
             serializer = CartSerializer(cart, context={'request': request})
@@ -89,16 +89,12 @@ class RemoveCartItemView(APIView):
         except CartItem.DoesNotExist:
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
-class UserDetailView(APIView):
+class CustomerProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = CustomerSerializer
     permission_classes = [IsAuthenticated]
 
-    class UserSerializer(Serializer):
-        username = CharField()
-        email = CharField()
-
-    def get(self, request):
-        serializer = self.UserSerializer(request.user)
-        return Response(serializer.data)
+    def get_object(self):
+        return self.request.user.customer
 
 class ProductSearchView(APIView):
     def get(self, request):
@@ -136,7 +132,7 @@ class OrderCreateView(APIView):
         ]):
             return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        cart_user, created = Cart.objects.get_or_create(user=request.user)
+        cart_user, created = Cart.objects.get_or_create(customer=request.user.customer)
         cart_items = CartItem.objects.filter(cart=cart_user)
 
         if not cart_items:
@@ -181,7 +177,7 @@ class OrderCreateView(APIView):
                 })
 
             order = Order.objects.create(
-                user=request.user,
+                user=request.user.customer,
                 address=shipping_address['address'],
                 city=shipping_address['city'],
                 postal_code=shipping_address['postal_code'],
@@ -215,7 +211,7 @@ class OrderListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        orders = Order.objects.filter(user=request.user).order_by('-created_at')
+        orders = Order.objects.filter(user=request.user.customer).order_by('-created_at')
         serializer = OrderSerializer(orders, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 

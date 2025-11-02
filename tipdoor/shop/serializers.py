@@ -54,6 +54,14 @@ class ProductSerializer(serializers.ModelSerializer):
                 return max(0, price - float(promotion.discount_value))
         return None
 
+class CustomerSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = Customer
+        fields = ['id', 'username', 'name', 'email', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True, style={'input_type': 'password'})
