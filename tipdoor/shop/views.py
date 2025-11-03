@@ -13,13 +13,12 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
-from .permissions import IsVendor, CanViewProducts
+from .permissions import IsVendor
 from django.utils import timezone
 
 
 class CustomerProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
-    permission_classes = [CanViewProducts]
     queryset = Product.objects.filter(is_published=True)
 
 class LatestArrivalView(generics.ListAPIView):
@@ -245,7 +244,6 @@ class ProductUnpublishView(views.APIView):
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ProductSerializer
-    permission_classes = [CanViewProducts | (IsAuthenticated & IsVendor)]
 
     def get_queryset(self):
         # Vendors see only their products; customers see published products

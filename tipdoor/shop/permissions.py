@@ -9,12 +9,3 @@ class IsVendor(BasePermission):
     def has_object_permission(self, request, view, obj):
         # Only allow access to the vendor's own products
         return obj.vendor == request.user.vendor
-
-class CanViewProducts(BasePermission):
-    def has_permission(self, request, view):
-        # Allow all users (authenticated or not) to view published products
-        return True
-
-    def has_object_permission(self, request, view, obj):
-        # Only allow viewing published products
-        return obj.is_published
