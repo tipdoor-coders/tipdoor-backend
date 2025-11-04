@@ -3,8 +3,9 @@ from . import views
 
 urlpatterns = [
     path("", views.index, name="index"),
-    path('customer/products/', views.CustomerProductListView.as_view(), name='customer-product-list'),
+    path('products/', views.CustomerProductListView.as_view(), name='customer-product-list'),
     path('vendor/products/', views.VendorProductListCreateView.as_view(), name='vendor-product-list-create'),
+    path('vendor/products/<int:pk>/', views.VendorProductDetailView.as_view(), name='vendor-product-detail'),
     path('vendor/orders/', views.VendorOrderItemListView.as_view(), name='vendor-order-item-list'),
     path('vendor/orders/<int:order_id>/status/', views.VendorOrderStatusUpdateView.as_view(), name='vendor-order-status-update'),
     path('latest-arrivals/', views.LatestArrivalView.as_view(), name='latest-arrival'),
@@ -15,7 +16,7 @@ urlpatterns = [
     path('user/', views.CustomerProfileView.as_view(), name='user-detail'),
     path('products/search', views.ProductSearchView.as_view(), name='product-search'),
     path('register/', views.CustomerRegisterView.as_view(), name='register'),
-    path('products/<int:pk>', views.ProductDetailView.as_view(), name='product-detail'),
+    path('products/<int:pk>/', views.ProductDetailView.as_view(), name='product-detail'),
     path('vendor/products/<int:pk>/publish/', views.ProductPublishView.as_view(), name='product-publish'),
     path('vendor/products/<int:pk>/unpublish/', views.ProductUnpublishView.as_view(), name='product-unpublish'),
     path('orders/create/', views.OrderCreateView.as_view(), name='order-create'),

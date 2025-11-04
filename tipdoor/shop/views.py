@@ -103,7 +103,8 @@ class ProductSearchView(APIView):
             return Response([], status=status.HTTP_200_OK)
         
         products = Product.objects.filter(
-            Q(name__icontains=query) | Q(price__icontains=query)
+            Q(name__icontains=query) | Q(price__icontains=query),
+            is_published=True
         )
         serializer = ProductSerializer(products, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -243,25 +244,30 @@ class ProductUnpublishView(views.APIView):
         except Product.DoesNotExist:
             return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
 
-class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+class ProductDetailView(generics.RetrieveAPIView):
     serializer_class = ProductSerializer
+    lookup_field = 'pk'
 
     def get_queryset(self):
-        # Vendors see only their products; customers see published products
-        if self.request.user.is_authenticated and hasattr(self.request.user, 'vendor') and self.request.user.vendor.is_active:
-            return Product.objects.filter(vendor__user=self.request.user)
         return Product.objects.filter(is_published=True)
+
+class VendorProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticated, IsVendor]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return Product.objects.filter(vendor=self.request.user.vendor)
 
 class VendorProductListCreateView(generics.ListCreateAPIView):
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated, IsVendor]
 
     def get_queryset(self):
-        return Product.objects.filter(vendor__user=self.request.user)
+        return Product.objects.filter(vendor=self.request.user.vendor)
 
     def perform_create(self, serializer):
-        vendor = Vendor.objects.get(user=self.request.user)
-        serializer.save(vendor=vendor)
+        serializer.save(vendor=self.request.user.vendor)
 
 class VendorOrderItemListView(generics.ListAPIView):
     serializer_class = OrderItemSerializer
