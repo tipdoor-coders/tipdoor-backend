@@ -19,14 +19,15 @@ from django.utils import timezone
 
 class CustomerProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
-    queryset = Product.objects.filter(is_published=True)
+
+    def get_queryset(self):
+        return Product.objects.filter(is_published=True)
 
 class LatestArrivalView(generics.ListAPIView):
-    queryset = Product.objects.order_by('-created_at')[:5]  # Newest 5 products
     serializer_class = ProductSerializer
 
-    def get_serializer_context(self):
-        return {'request': self.request}
+    def get_queryset(self):
+        return Product.objects.filter(is_published=True).order_by('-created_at')[:5]
 
 class CartView(APIView):
     permission_classes = [IsAuthenticated]
