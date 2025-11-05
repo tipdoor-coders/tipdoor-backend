@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
 from .permissions import IsVendor
 from django.utils import timezone
+from . import serializers
 
 
 class CustomerProductListView(generics.ListAPIView):
@@ -29,20 +30,28 @@ class LatestArrivalView(generics.ListAPIView):
     def get_queryset(self):
         return Product.objects.filter(is_published=True).order_by('-created_at')[:5]
 
-class CartView(APIView):
+class CartView(generics.RetrieveAPIView):
+    """Gets the user's cart"""
+
+    serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        cart, created = Cart.objects.get_or_create(customer=request.user.customer)
-        serializer = CartSerializer(cart, context={'request': request})
-        return Response(serializer.data)
+    def get_object(self):
+        cart, created = Cart.objects.get_or_create(customer=self.request.user.customer)
+        return cart
 
 class AddToCartView(APIView):
+    """Adds an item to the cart"""
+
     permission_classes = [IsAuthenticated]
+    serializer_class = serializers.AddToCartSerializer
 
     def post(self, request):
-        product_id = request.data.get('product_id')
-        quantity = request.data.get('quantity', 1)
+        input_serializer = serializers.AddToCartSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        product_id = input_serializer.validated_data['product_id']
+        quantity = input_serializer.validated_data['quantity']
+
         try:
             product = Product.objects.get(id=product_id)
             cart, created = Cart.objects.get_or_create(customer=request.user.customer)
@@ -50,7 +59,7 @@ class AddToCartView(APIView):
                 cart=cart, product=product, defaults={'quantity': quantity}
             )
             if not item_created:
-                cart_item.quantity += int(quantity)
+                cart_item.quantity += quantity
                 cart_item.save()
             serializer = CartSerializer(cart, context={'request': request})
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -59,15 +68,19 @@ class AddToCartView(APIView):
             return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class UpdateCartItemView(APIView):
+    """Updates the quantity of an item in the user's cart"""
+
     permission_classes = [IsAuthenticated]
+    serializer_class = serializers.UpdateCartItemSerializer
 
     def patch(self, request, item_id):
+        input_serializer = serializers.UpdateCartItemSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        quantity = input_serializer.validated_data['quantity']
+
         try:
             cart_item = CartItem.objects.get(id=item_id, cart__customer=request.user.customer)
-            quantity = request.data.get('quantity')
-            if quantity is None or int(quantity) < 1:
-                return Response({"error": "Quantity must be at least 1"}, status=status.HTTP_400_BAD_REQUEST)
-            cart_item.quantity = int(quantity)
+            cart_item.quantity = quantity
             cart_item.save()
             serializer = CartSerializer(cart_item.cart, context={'request': request})
             return Response(serializer.data)
@@ -76,7 +89,10 @@ class UpdateCartItemView(APIView):
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class RemoveCartItemView(APIView):
+    """Remove an item from the cart"""
+
     permission_classes = [IsAuthenticated]
+    serializer_class = CartSerializer
 
     def delete(self, request, item_id):
         try:
