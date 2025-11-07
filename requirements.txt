@@ -10,3 +10,4 @@ python-dotenv
 whitenoise[brotli]
 gunicorn
 uvicorn
+dj-rest-auth
