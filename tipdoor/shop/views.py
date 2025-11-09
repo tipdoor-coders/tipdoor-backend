@@ -16,7 +16,7 @@ from django.db import transaction
 from .permissions import IsVendor
 from django.utils import timezone
 from . import serializers
-
+from django.core.exceptions import ValidationError
 
 class CustomerProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
@@ -112,18 +112,16 @@ class CustomerProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user.customer
 
-class ProductSearchView(APIView):
-    def get(self, request):
-        query = request.GET.get('q', '')
-        if not query:
-            return Response([], status=status.HTTP_200_OK)
-        
-        products = Product.objects.filter(
-            Q(name__icontains=query) | Q(price__icontains=query),
-            is_published=True
-        )
-        serializer = ProductSerializer(products, many=True, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class ProductSearchView(generics.ListAPIView):
+    serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        query = self.request.GET.get('q', '').strip()
+        if query:
+            queryset = Product.objects.filter(Q(name__icontains=query), is_published=True)
+        else:
+            return Product.objects.none()
+        return queryset
 
 class CustomerRegisterView(generics.CreateAPIView):
     serializer_class = CustomerRegistrationSerializer
@@ -131,106 +129,116 @@ class CustomerRegisterView(generics.CreateAPIView):
 
 class OrderCreateView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = OrderSerializer
 
-    @transaction.atomic
     def post(self, request):
         shipping_address = request.data.get('shippingAddress', {})
-        payment_info = request.data.get('paymentInfo', {})
         promo_code = request.data.get('promo_code', '')
-        
-        if not all([
-            shipping_address.get('address'),
-            shipping_address.get('city'),
-            shipping_address.get('postal_code'),
-            shipping_address.get('country'),
-            payment_info.get('card_number'),
-            payment_info.get('expiry'),
-            payment_info.get('cvv'),
-        ]):
-            return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        self._validate_shipping(shipping_address)
+
         cart_user, created = Cart.objects.get_or_create(customer=request.user.customer)
         cart_items = CartItem.objects.filter(cart=cart_user)
 
         if not cart_items:
             return Response({'error': 'Cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        promotion = None
-        if promo_code:
+
+        promotion = self._get_valid_promotion(promo_code, cart_items)
+
+        with transaction.atomic():
             try:
-                now = timezone.now()
-                promotion = Promotion.objects.get(
-                    promo_code=promo_code,
-                    is_active=True,
-                    start_date__lte=now,
-                    end_date__gte=now
+                total_amount = sum(item.product.price * item.quantity for item in cart_items)
+                discounted_total = total_amount
+                order_items_data = []
+
+                for item in cart_items:
+                    price = item.product.price
+                    discounted_price = price
+                    if promotion and promotion.applicable_products.filter(id=item.product.id).exists():
+                        if promotion.discount_type == 'percentage':
+                            discounted_price = price * (1 - promotion.discount_value / 100)
+                        elif promotion.discount_type == 'fixed':
+                            discounted_price = max(0, price - promotion.discount_value)
+                    discounted_total -= (price - discounted_price) * item.quantity
+                    order_items_data.append({
+                        'product': item.product,
+                        'quantity': item.quantity,
+                        'price': price,
+                        'discounted_price': discounted_price
+                    })
+
+                order = Order.objects.create(
+                    user=request.user.customer,
+                    address=shipping_address['address'],
+                    city=shipping_address['city'],
+                    postal_code=shipping_address['postal_code'],
+                    country=shipping_address['country'],
+                    total_amount=total_amount,
+                    promo_code=promo_code if promotion else None,
+                    status='Pending'
                 )
-                # Check if promo applies to any cart items
-                applicable = any(promotion.applicable_products.filter(id=item.product.id).exists() for item in cart_items)
-                if not applicable:
-                    return Response({'error': 'Promo code does not apply to any items in the cart'}, status=status.HTTP_400_BAD_REQUEST)
-            except Promotion.DoesNotExist:
-                return Response({'error': 'Invalid or inactive promo code'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+                for item_data in order_items_data:
+                    OrderItem.objects.create(
+                        order=order,
+                        product=item_data['product'],
+                        quantity=item_data['quantity'],
+                        price=item_data['price'],
+                        discounted_price=item_data['discounted_price'] if item_data['discounted_price'] != item_data['price'] else None
+                    )
+
+                cart_items.delete()  # Clear cart after order
+
+                serializer = OrderSerializer(order, context={'request': request, 'promo_code': promo_code})
+                response_data = serializer.data
+                response_data['order_id'] = order.id
+                response_data['message'] = 'Order created successfully'
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _validate_shipping(self, shipping_address):
+        if not all([
+            shipping_address.get('address'),
+            shipping_address.get('city'),
+            shipping_address.get('postal_code'),
+            shipping_address.get('country'),
+        ]):
+            raise ValidationError('All fields are required')
+
+    def _get_valid_promotion(self, promo_code, cart_items):
+        if not promo_code:
+            return None
+        now = timezone.now()
         try:
-            total_amount = sum(item.product.price * item.quantity for item in cart_items)
-            discounted_total = float(total_amount)
-            order_items_data = []
-
-            for item in cart_items:
-                price = float(item.product.price)
-                discounted_price = price
-                if promotion and promotion.applicable_products.filter(id=item.product.id).exists():
-                    if promotion.discount_type == 'percentage':
-                        discounted_price = float(price) * (1 - float(promotion.discount_value) / 100)
-                    elif promotion.discount_type == 'fixed':
-                        discounted_price = max(0, price - float(promotion.discount_value))
-                discounted_total -= (price - discounted_price) * float(item.quantity)
-                order_items_data.append({
-                    'product': item.product,
-                    'quantity': item.quantity,
-                    'price': price,
-                    'discounted_price': discounted_price
-                })
-
-            order = Order.objects.create(
-                user=request.user.customer,
-                address=shipping_address['address'],
-                city=shipping_address['city'],
-                postal_code=shipping_address['postal_code'],
-                country=shipping_address['country'],
-                total_amount=total_amount,
-                promo_code=promo_code if promotion else None,
-                status='Pending'
+            promotion = Promotion.objects.get(
+                promo_code=promo_code,
+                is_active=True,
+                start_date__lte=now,
+                end_date__gte=now
             )
-            
-            for item_data in order_items_data:
-                OrderItem.objects.create(
-                    order=order,
-                    product=item_data['product'],
-                    quantity=item_data['quantity'],
-                    price=item_data['price'],
-                    discounted_price=item_data['discounted_price'] if item_data['discounted_price'] != item_data['price'] else None
-                )
-            
-            cart_items.delete()  # Clear cart after order
+        except Promotion.DoesNotExist:
+            raise ValidationError('Invalid or inactive promo code')
 
-            serializer = OrderSerializer(order, context={'request': request, 'promo_code': promo_code})
-            response_data = serializer.data
-            response_data['order_id'] = order.id
-            response_data['message'] = 'Order created successfully'
+        applicable = any(
+            promotion.applicable_products.filter(id=item.product.id).exists()
+            for item in cart_items
+        )
+        if not applicable:
+            raise ValidationError('Promo code does not apply to any items in the cart')
 
-            return Response({'message': 'Order created successfully', 'order_id': order.id}, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return promotion
 
-class OrderListView(APIView):
+class OrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = OrderSerializer
 
-    def get(self, request):
-        orders = Order.objects.filter(user=request.user.customer).order_by('-created_at')
-        serializer = OrderSerializer(orders, many=True, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def get_queryset(self):
+        customer = getattr(self.request.user, 'customer', None)
+        if not customer:
+            return Order.objects.none()
+        return Order.objects.filter(user=self.request.user.customer).order_by('-created_at')
 
 class ProductPublishView(views.APIView):
     permission_classes = [IsAuthenticated, IsVendor]
