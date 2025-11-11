@@ -2,7 +2,6 @@ venv/
 notes.txt
 __pycache__/
 .vscode/
-tipdoor/products/
-tipdoor/promotions/
+tipdoor/media/
 .env
 staticfiles/
