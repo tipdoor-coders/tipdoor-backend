@@ -36,11 +36,14 @@ class Product(models.Model):
         return "In Stock"
 
 class Cart(models.Model):
-    customer = models.OneToOneField(Customer, on_delete=models.CASCADE, related_name='cart')
+    customer = models.ForeignKey(Customer, null=True, blank=True, on_delete=models.CASCADE, related_name='cart')
+    session_key = models.CharField(max_length=40, null=True, blank=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Cart for {self.customer.name}"
+        if self.customer:
+            return f"Cart for {self.customer.name}"
+        return f"Cart for session {self.session_key}"
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')

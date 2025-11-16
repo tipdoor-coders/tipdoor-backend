@@ -17,6 +17,7 @@ from .permissions import IsVendor
 from django.utils import timezone
 from . import serializers
 from django.core.exceptions import ValidationError
+from utils.mixins import CartMixin
 
 class CustomerProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
@@ -30,74 +31,73 @@ class LatestArrivalView(generics.ListAPIView):
     def get_queryset(self):
         return Product.objects.filter(is_published=True).order_by('-created_at')[:5]
 
-class CartView(generics.RetrieveAPIView):
+class CartView(CartMixin, generics.RetrieveAPIView):
     """Gets the user's cart"""
 
     serializer_class = CartSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        cart, created = Cart.objects.get_or_create(customer=self.request.user.customer)
-        return cart
+        return self.get_cart(self.request)
 
-class AddToCartView(APIView):
+class AddToCartView(CartMixin, APIView):
     """Adds an item to the cart"""
 
-    permission_classes = [IsAuthenticated]
     serializer_class = serializers.AddToCartSerializer
 
     def post(self, request):
-        input_serializer = serializers.AddToCartSerializer(data=request.data)
+        input_serializer = self.serializer_class(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         product_id = input_serializer.validated_data['product_id']
         quantity = input_serializer.validated_data['quantity']
 
         try:
             product = Product.objects.get(id=product_id)
-            cart, created = Cart.objects.get_or_create(customer=request.user.customer)
-            cart_item, item_created = CartItem.objects.get_or_create(
-                cart=cart, product=product, defaults={'quantity': quantity}
-            )
-            if not item_created:
-                cart_item.quantity += quantity
-                cart_item.save()
-            serializer = CartSerializer(cart, context={'request': request})
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
         except Product.DoesNotExist:
             return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
 
-class UpdateCartItemView(APIView):
+        cart = self.get_cart(request)
+
+        cart_item, item_created = CartItem.objects.get_or_create(
+            cart=cart, product=product, defaults={'quantity': quantity}
+        )
+        if not item_created:
+            cart_item.quantity += quantity
+            cart_item.save()
+        serializer = CartSerializer(cart, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class UpdateCartItemView(CartMixin, APIView):
     """Updates the quantity of an item in the user's cart"""
 
-    permission_classes = [IsAuthenticated]
     serializer_class = serializers.UpdateCartItemSerializer
 
     def patch(self, request, item_id):
-        input_serializer = serializers.UpdateCartItemSerializer(data=request.data)
+        input_serializer = self.serializer_class(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         quantity = input_serializer.validated_data['quantity']
 
+        cart = self.get_cart(request)
+
         try:
-            cart_item = CartItem.objects.get(id=item_id, cart__customer=request.user.customer)
+            cart_item = CartItem.objects.get(id=item_id, cart=cart)
             cart_item.quantity = quantity
             cart_item.save()
-            serializer = CartSerializer(cart_item.cart, context={'request': request})
+            serializer = CartSerializer(cart, context={'request': request})
             return Response(serializer.data)
 
         except CartItem.DoesNotExist:
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
-class RemoveCartItemView(APIView):
+class RemoveCartItemView(CartMixin, APIView):
     """Remove an item from the cart"""
 
-    permission_classes = [IsAuthenticated]
     serializer_class = CartSerializer
 
     def delete(self, request, item_id):
+        cart = self.get_cart(request)
+
         try:
-            cart_item = CartItem.objects.get(id=item_id, cart__customer=request.user.customer)
-            cart = cart_item.cart
+            cart_item = CartItem.objects.get(id=item_id, cart=cart)
             cart_item.delete()
             serializer = CartSerializer(cart, context={'request': request})
             return Response(serializer.data)
