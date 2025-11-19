@@ -83,6 +83,23 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
         customer = Customer.objects.create(user=user, **validated_data)
         return customer
 
+class SendOTPSerializer(serializers.Serializer):
+    mobile_number = serializers.CharField(max_length=15)
+
+    def validate_mobile_number(self, value):
+        if not value.isdigit() or len(value) != 10:
+            raise serializers.ValidationError("Mobile number must be 10 digits")
+        return value
+
+class VerifyOTPSerializer(serializers.Serializer):
+    mobile_number = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=6)
+
+    def validate_otp(self, value):
+        if not value.isdigit() or len(value) != 6:
+            raise serializers.ValidationError("OTP must be 6 digits")
+        return value
+
 class AddToCartSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(default=1, min_value=1)

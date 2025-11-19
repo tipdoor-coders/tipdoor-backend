@@ -1,17 +1,41 @@
+from datetime import timedelta
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils import timezone
+
 from vendors.models import Vendor
 
 class Customer(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='customer')
-    name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
+    name = models.CharField(max_length=100, blank=True)
+    mobile_number = models.CharField(max_length=15, unique=True)
+    email = models.EmailField(unique=True, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.name
+        return f"{self.name or 'User'} - {self.mobile_number}"
+
+class OTP(models.Model):
+    mobile_number = models.CharField(max_length=15, db_index=True)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['mobile_number', '-created_at']),
+        ]
+
+    def is_valid(self):
+        """Check if OTP is still valid (5 minutes)"""
+        return self.created_at >= timezone.now() - timedelta(minutes=5)
+
+    def __str__(self):
+        return f"{self.mobile_number} - {self.otp}"
 
 class Product(models.Model):
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='products')

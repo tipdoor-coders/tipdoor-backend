@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from rest_framework import generics, status, views
-from .models import Cart, CartItem, Product, Order, OrderItem, Promotion
+from .models import Cart, CartItem, Product, Order, OrderItem, Promotion, Customer, OTP
 from vendors.models import Vendor
 from delivery.models import DeliveryPartner
 from .serializers import ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer, OrderItemSerializer, PromotionSerializer, CustomerRegistrationSerializer, CustomerSerializer, OrderStatusUpdateSerializer
@@ -18,12 +18,109 @@ from django.utils import timezone
 from . import serializers
 from django.core.exceptions import ValidationError
 from utils.mixins import CartMixin
+from datetime import timedelta
+import random
 
 class CustomerProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
 
     def get_queryset(self):
         return Product.objects.filter(is_published=True)
+
+class SendOTPView(APIView):
+    serializer_class = serializers.SendOTPSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        mobile_number = serializer.validated_data['mobile_number']
+
+        one_min_ago = timezone.now() - timedelta(minutes=1)
+        recent_otps = OTP.objects.filter(
+            mobile_number=mobile_number,
+            created_at__gte=one_min_ago
+        ).count()
+
+        if recent_otps >= 3:
+            return Response(
+                {'error': 'Too many OTP requests. Please try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        otp = str(random.randint(100000, 999999))
+        OTP.objects.create(mobile_number=mobile_number, otp=otp)
+
+        print(f"OTP for {mobile_number}: {otp}")
+
+        return Response({
+            'message': 'OTP sent successfully',
+            'mobile_number': mobile_number
+        }, status=status.HTTP_200_OK)
+    
+class VerifyOTPView(APIView):
+    serializer_class = serializers.VerifyOTPSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        mobile_number = serializer.validated_data['mobile_number']
+        otp = serializer.validated_data['otp']
+
+        five_min_ago = timezone.now() - timedelta(minutes=5)
+
+        try:
+            otp_obj = OTP.objects.filter(
+                mobile_number=mobile_number,
+                otp=otp,
+                is_verified=False
+            ).latest('created_at')
+
+            if not otp_obj.is_valid():
+                return Response(
+                    {'error': 'OTP has expired'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except OTP.DoesNotExist:
+            return Response(
+                {'error': 'Invalid OTP'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        otp_obj.is_verified = True
+        otp_obj.save()
+
+        customer = Customer.objects.filter(mobile_number=mobile_number).first()
+        created = False
+
+        if not customer:
+            user = User.objects.create_user(
+                username=mobile_number,
+                password=None
+            )
+            customer = Customer.objects.create(
+                user=user,
+                mobile_number=mobile_number,
+            )
+            created = True
+
+        refresh = RefreshToken.for_user(customer.user)
+
+        return Response({
+            'message': 'Login successful',
+            'is_new_user': created,
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user': {
+                'id': customer.id,
+                'mobile_number': customer.mobile_number,
+            }
+        }, status=status.HTTP_200_OK)
 
 class LatestArrivalView(generics.ListAPIView):
     serializer_class = ProductSerializer
