@@ -109,6 +109,24 @@ class VerifyOTPView(APIView):
             )
             created = True
 
+        if request.session.session_key:
+            session_cart = Cart.objects.filter(
+                        session_key=request.session.session_key,
+                        customer__isnull=True
+                    ).first()
+
+            if session_cart:
+                user_cart, _ = Cart.objects.get_or_create(customer=customer)
+                for item in session_cart.items.all():
+                    cart_item, created = user_cart.items.get_or_create(
+                        product=item.product,
+                        defaults={'quantity': item.quantity}
+                    )
+                    if not created:
+                        cart_item.quantity += item.quantity
+                        cart_item.save()
+                session_cart.delete()
+
         refresh = RefreshToken.for_user(customer.user)
 
         return Response({
