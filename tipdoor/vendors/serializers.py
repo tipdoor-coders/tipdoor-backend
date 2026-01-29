@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.db import transaction
 from .models import Vendor
 
 class VendorSerializer(serializers.ModelSerializer):
@@ -24,20 +25,12 @@ class VendorSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=email).exists():
             raise serializers.ValidationError({'email': 'Email already exists'})
 
-        # Create User
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password
-        )
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password
+            )
+            vendor = Vendor.objects.create(user=user, **validated_data)
 
-        # Create Vendor
-        vendor = Vendor.objects.create(user=user, **validated_data)
         return vendor
-
-    def to_representation(self, instance):
-        # Exclude password and optionally username from response
-        representation = super().to_representation(instance)
-        representation.pop('password', None)
-        representation.pop('username', None)  # Optional: exclude username from response
-        return representation
